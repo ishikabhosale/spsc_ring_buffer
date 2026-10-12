@@ -1,0 +1,8 @@
+.git
+build
+build-perf
+spsc_demo
+spsc_thread_test
+spsc_unit_test
+spsc_bench
+perf.data*

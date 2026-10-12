@@ -1,4 +1,7 @@
 /build/
+/build-docker/
 /spsc_demo
 /spsc_thread_test
 /spsc_bench
+/build-perf/
+/perf.data*

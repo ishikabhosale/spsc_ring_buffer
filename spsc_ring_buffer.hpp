@@ -4,6 +4,7 @@
 #include <atomic>
 #include <cstddef>
 #include <limits>
+#include <new>
 #include <optional>
 #include <utility>
 
@@ -18,9 +19,24 @@ class SpscRingBuffer {
 
     // One extra slot distinguishes full from empty while allowing Capacity items.
     static constexpr std::size_t kSlots = Capacity + 1;
+#if defined(SPSC_CACHE_SEPARATION_BYTES)
+    static constexpr std::size_t kCacheSeparation = SPSC_CACHE_SEPARATION_BYTES;
+#elif defined(__cpp_lib_hardware_interference_size)
+    static constexpr std::size_t kCacheSeparation =
+        std::hardware_destructive_interference_size;
+#else
+    // C++17 libraries without the interference-size constants commonly target
+    // 64-byte cache lines. Override by defining SPSC_CACHE_SEPARATION_BYTES.
+    static constexpr std::size_t kCacheSeparation = 64;
+#endif
 
-    struct alignas(64) Cursor {
+    struct alignas(kCacheSeparation) Cursor {
         std::atomic<std::size_t> value{0};
+    };
+
+    // Keep independently-owned adjacent elements from sharing a cache line.
+    struct alignas(kCacheSeparation) Slot {
+        std::optional<T> value;
     };
 
 public:
@@ -36,7 +52,7 @@ public:
             return false;
         }
 
-        slots_[write].emplace(std::forward<Args>(args)...);
+        slots_[write].value.emplace(std::forward<Args>(args)...);
         write_cursor_.value.store(next_write, std::memory_order_release);
         return true;
     }
@@ -55,8 +71,8 @@ public:
             return std::nullopt;
         }
 
-        std::optional<T> result(std::move(slots_[read].value()));
-        slots_[read].reset();
+        std::optional<T> result(std::move(slots_[read].value.value()));
+        slots_[read].value.reset();
         read_cursor_.value.store(next(read), std::memory_order_release);
         return result;
     }
@@ -66,8 +82,9 @@ private:
         return cursor == Capacity ? 0 : cursor + 1;
     }
 
-    // Producer-owned and consumer-owned cursors occupy separate cache lines.
+    // Producer-owned and consumer-owned cursors occupy separate destructive
+    // interference regions (128-byte cache lines on the current Apple Silicon host).
     Cursor write_cursor_{};
     Cursor read_cursor_{};
-    std::array<std::optional<T>, kSlots> slots_{};
+    std::array<Slot, kSlots> slots_{};
 };

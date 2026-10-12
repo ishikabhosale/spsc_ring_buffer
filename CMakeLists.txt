@@ -29,20 +29,28 @@ add_test(NAME spsc_unit COMMAND spsc_unit_test)
 
 option(SPSC_BUILD_BENCHMARKS "Build the Google Benchmark suite" ON)
 if(SPSC_BUILD_BENCHMARKS)
-    include(FetchContent)
-    set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
-    set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
-    set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(
-        googlebenchmark
-        GIT_REPOSITORY https://github.com/google/benchmark.git
-        GIT_TAG v1.9.1
-        GIT_SHALLOW TRUE
-    )
-    FetchContent_MakeAvailable(googlebenchmark)
+    if(POLICY CMP0167)
+        cmake_policy(SET CMP0167 NEW)
+    endif()
+    find_package(Boost REQUIRED)
+    find_package(benchmark CONFIG QUIET)
+    if(NOT TARGET benchmark::benchmark)
+        include(FetchContent)
+        set(BENCHMARK_ENABLE_TESTING OFF CACHE BOOL "" FORCE)
+        set(BENCHMARK_ENABLE_GTEST_TESTS OFF CACHE BOOL "" FORCE)
+        set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+        FetchContent_Declare(
+            googlebenchmark
+            GIT_REPOSITORY https://github.com/google/benchmark.git
+            GIT_TAG v1.9.1
+            GIT_SHALLOW TRUE
+        )
+        FetchContent_MakeAvailable(googlebenchmark)
+    endif()
 
     add_executable(spsc_bench spsc_bench.cpp)
     target_link_libraries(spsc_bench PRIVATE spsc::ring_buffer benchmark::benchmark Threads::Threads)
+    target_include_directories(spsc_bench PRIVATE ${Boost_INCLUDE_DIRS})
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(spsc_bench PRIVATE -O2 -march=native -Wall -Wextra -Wpedantic)
     endif()
